@@ -1,10 +1,10 @@
 import asyncio
 from pyrogram import Client, filters, enums
 from pyrogram.errors import FloodWait
-from info import ADMINS, CHANNELS # Make sure these imports are correct
-from database.ia_filterdb import save_file # Make sure this import is correct
+from info import ADMINS, CHANNELS
+from database.ia_filterdb import save_file
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from utils import temp, get_readable_time # Make sure these imports are correct
+from utils import temp, get_readable_time
 import time
 
 lock = asyncio.Lock()
@@ -17,10 +17,8 @@ async def index_files(bot, query):
         msg = query.message
         await msg.edit("<b>Indexing started...</b>")
         try:
-            # Try to convert chat ID to integer for numerical IDs
             chat = int(chat)
         except:
-            # Keep as string for usernames
             chat = chat
         await index_files_to_db(int(lst_msg_id), chat, msg, bot, int(skip))
     elif ident == "cancel":
@@ -43,7 +41,6 @@ async def send_for_index(bot, message):
             last_msg_id = int(msg_link[-1])
             chat_id = msg_link[-2]
             if chat_id.isnumeric():
-                # Convert public numerical ID to Pyrogram format
                 chat_id = int(("-100" + chat_id))
         except:
             await message.reply("Invalid message link!")
@@ -112,8 +109,7 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip):
 
     async with lock:
         try:
-            # The heart of the indexing process
-            async for message in bot.iter_messages(chat, lst_msg_id, offset=skip): # Changed 'skip' to 'offset'
+            async for message in bot.iter_messages(chat, lst_msg_id, skip):
                 time_taken = get_readable_time(time.time() - start_time)
                 if temp.CANCEL:
                     temp.CANCEL = False
@@ -122,8 +118,6 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip):
                     )
                     return
                 current += 1
-                
-                # Update status every 100 messages
                 if current % 100 == 0:
                     btn = [
                         [
@@ -137,10 +131,7 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip):
                         text=f"Total messages received: <code>{current}</code>\nTotal messages saved: <code>{total_files}</code>\nDuplicate Files Skipped: <code>{duplicate}</code>\nDeleted Messages Skipped: <code>{deleted}</code>\nNon-Media messages skipped: <code>{no_media + unsupported}</code>\nUnsupported Media: <code>{unsupported}</code>\nErrors Occurred: <code>{errors}</code>",
                         reply_markup=InlineKeyboardMarkup(btn),
                     )
-                    # Add a small delay to avoid FloodWait from too many edits
-                    await asyncio.sleep(2) 
-                    
-                # Filtering Logic
+                    await asyncio.sleep(2)
                 if message.empty:
                     deleted += 1
                     continue
@@ -153,37 +144,26 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip):
                 ]:
                     unsupported += 1
                     continue
-                
-                # Get the media object (Video or Document)
                 media = getattr(message, message.media.value, None)
                 if not media:
                     unsupported += 1
                     continue
-                
-                # Strict MIME type check for videos
                 elif media.mime_type not in ["video/mp4", "video/x-matroska"]:
                     unsupported += 1
                     continue
-                
-                # Save the file to the database
                 media.caption = message.caption
                 sts = await save_file(media)
-                
                 if sts == "suc":
                     total_files += 1
                 elif sts == "dup":
                     duplicate += 1
                 elif sts == "err":
                     errors += 1
-                    
         except FloodWait as e:
-            # Handle Pyrogram FloodWait errors
             await asyncio.sleep(e.x)
         except Exception as e:
-            # Handle any other unexpected errors
             await msg.reply(f"Index canceled due to Error - {e}")
         else:
-            # Final success message
             time_taken = get_readable_time(time.time() - start_time)
             await msg.edit(
                 f"Succesfully saved <code>{total_files}</code> to Database!\nCompleted in {time_taken}\n\nDuplicate Files Skipped: <code>{duplicate}</code>\nDeleted Messages Skipped: <code>{deleted}</code>\nNon-Media messages skipped: <code>{no_media + unsupported}</code>\nUnsupported Media: <code>{unsupported}</code>\nErrors Occurred: <code>{errors}</code>"
