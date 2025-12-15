@@ -4,14 +4,36 @@ import base64
 from pyrogram.file_id import FileId
 from pymongo.errors import DuplicateKeyError
 from umongo import Instance, Document, fields
-from motor.motor_asyncio import AsyncIOMotorClient
+# REMOVED: from motor.motor_asyncio import AsyncIOMotorClient # No longer needed here
 from marshmallow.exceptions import ValidationError
-from info import FILES_DATABASE, DATABASE_NAME, COLLECTION_NAME, MAX_BTN
+# REMOVED: FILES_DATABASE, DATABASE_URI # No longer needed here
+from info import DATABASE_NAME, COLLECTION_NAME, MAX_BTN
 
-client = AsyncIOMotorClient(FILES_DATABASE)
+# ----------------- NEW DYNAMIC DB IMPORTS -----------------
+from database.db_manager import get_current_db, active_db_uri, check_db_size
+# ----------------------------------------------------------
+
+# We use a placeholder client and instance that will be updated later
+# We only need the instance to register the Document
+# The actual connection will be created and switched by get_db_instance()
+class DummyClient:
+    def __init__(self):
+        self.is_connected = False
+        self.is_closed = True
+        self[DATABASE_NAME] = None
+
+client = DummyClient() 
 mydb = client[DATABASE_NAME]
 instance = Instance.from_db(mydb)
 
+
+# Function to ensure the database instance uses the currently active connection
+async def get_db_instance():
+    """Gets the currently active database object and updates the umongo instance."""
+    mydb = await get_current_db()
+    # This is the crucial step for umongo: setting the active database
+    instance.set_db(mydb) 
+    return mydb
 
 @instance.register
 class Media(Document):
@@ -27,13 +49,21 @@ class Media(Document):
         indexes = ("$file_name",)
         collection_name = COLLECTION_NAME
 
+# The core functions now rely on the dynamic connection:
 
 async def get_files_db_size():
-    return (await mydb.command("dbstats"))["dataSize"]
+    """Get the size of the currently active database."""
+    # Note: This uses the db_manager's check_db_size for the current URI
+    if not active_db_uri:
+        # Fallback if somehow not initialized
+        await get_db_instance() 
+    return await check_db_size(active_db_uri)
 
 
 async def save_file(media):
     """Save file in database"""
+    # Ensure umongo instance is using the latest active DB before saving
+    await get_db_instance() 
 
     # TODO: Find better way to get same file_id for same media to avoid duplicates
     file_id, file_ref = unpack_new_file_id(media.file_id)
@@ -65,6 +95,9 @@ async def save_file(media):
 
 
 async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None):
+    # Ensure umongo instance is using the latest active DB before querying
+    await get_db_instance() 
+    
     query = query.strip()
     if not query:
         raw_pattern = "."
@@ -97,6 +130,9 @@ async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None):
 
 
 async def get_bad_files(query, file_type=None, offset=0, filter=False):
+    # Ensure umongo instance is using the latest active DB before querying
+    await get_db_instance() 
+
     query = query.strip()
     if not query:
         raw_pattern = "."
@@ -119,6 +155,9 @@ async def get_bad_files(query, file_type=None, offset=0, filter=False):
 
 
 async def get_file_details(query):
+    # Ensure umongo instance is using the latest active DB before querying
+    await get_db_instance() 
+
     filter = {"file_id": query}
     cursor = Media.find(filter)
     filedetails = await cursor.to_list(length=1)
