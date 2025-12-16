@@ -49,6 +49,13 @@ async def Jisshu_start():
     bot_info = await JisshuBot.get_me()
     JisshuBot.username = bot_info.username
     await initialize_clients()
+    
+    # ----------------------------------------------------
+    #  <--- CRITICAL CHANGE ADDED HERE --->
+    # ----------------------------------------------------
+    await db.initialize() 
+    # ----------------------------------------------------
+    
     for name in files:
         with open(name) as a:
             patt = Path(a.name)
@@ -62,10 +69,15 @@ async def Jisshu_start():
             print("JisshuBot Imported => " + plugin_name)
     if ON_HEROKU:
         asyncio.create_task(ping_server())
-    b_users, b_chats = await db.get_banned()
+        
+    # db.get_banned() now runs *after* the database connection is initialized
+    b_users, b_chats = await db.get_banned() 
     temp.BANNED_USERS = b_users
     temp.BANNED_CHATS = b_chats
-    await Media.ensure_indexes()
+    
+    # Media.ensure_indexes() now runs *after* the umongo instance is set
+    await Media.ensure_indexes() 
+    
     me = await JisshuBot.get_me()
     temp.ME = me.id
     temp.U_NAME = me.username
