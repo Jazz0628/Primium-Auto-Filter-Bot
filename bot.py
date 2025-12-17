@@ -46,16 +46,19 @@ pyrogram.utils.MIN_CHANNEL_ID = -1009147483647
 async def Jisshu_start():
     print("\n")
     print("Credit - Telegram Pro Botz")
+    
+    # 1. Get bot info
     bot_info = await JisshuBot.get_me()
     JisshuBot.username = bot_info.username
+    
+    # 2. Initialize database connection FIRST
+    # This ensures the client is ready before any queries are made
+    await db.initialize() 
+    
+    # 3. Initialize other clients
     await initialize_clients()
     
-    # ----------------------------------------------------
-    #  <--- CRITICAL CHANGE ADDED HERE --->
-    # ----------------------------------------------------
-    await db.initialize() 
-    # ----------------------------------------------------
-    
+    # Load plugins
     for name in files:
         with open(name) as a:
             patt = Path(a.name)
@@ -67,14 +70,18 @@ async def Jisshu_start():
             spec.loader.exec_module(load)
             sys.modules["plugins." + plugin_name] = load
             print("JisshuBot Imported => " + plugin_name)
+
     if ON_HEROKU:
         asyncio.create_task(ping_server())
         
-    # db.get_banned() now runs *after* the database connection is initialized
+    # Now these database calls will work because initialization is complete
     b_users, b_chats = await db.get_banned() 
     temp.BANNED_USERS = b_users
     temp.BANNED_CHATS = b_chats
     
+    await Media.ensure_indexes() 
+    
+    # ... rest of your code (setting temp variables and starting web server)
     # Media.ensure_indexes() now runs *after* the umongo instance is set
     await Media.ensure_indexes() 
     
